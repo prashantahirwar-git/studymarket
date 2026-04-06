@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Successful — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <style>
+    @keyframes pop { 0%{transform:scale(0)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
+    .success-icon { animation: pop .5s ease forwards; display:inline-block; }
+    @keyframes fade-up { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation: fade-up .5s ease both; }
+    .fade-up-1 { animation-delay:.1s; }
+    .fade-up-2 { animation-delay:.25s; }
+    .fade-up-3 { animation-delay:.4s; }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+  </div>
+</nav>
+
+<main style="display:flex;align-items:center;justify-content:center;min-height:70vh;padding:2rem 1rem">
+  <div style="text-align:center;max-width:520px;width:100%">
+
+    <div class="success-icon" style="font-size:5rem;margin-bottom:1rem">✅</div>
+
+    <div class="fade-up fade-up-1">
+      <h1 style="font-size:2rem;margin-bottom:.4rem">Payment Successful!</h1>
+      <p style="color:var(--muted);margin-bottom:2rem">
+        Your study material has been unlocked and is ready to download.
+      </p>
+    </div>
+
+    <!-- Order details card -->
+    <div class="fade-up fade-up-2" style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.75rem;text-align:left">
+      <div style="font-size:.75rem;color:var(--indigo);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem">Order Summary</div>
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--border);font-size:.9rem">
+        <span style="color:var(--muted)">Material</span>
+        <span style="font-weight:600;max-width:240px;text-align:right">{{ product.title }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--border);font-size:.9rem">
+        <span style="color:var(--muted)">Order ID</span>
+        <span style="font-family:monospace">#{{ order.id }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--border);font-size:.9rem">
+        <span style="color:var(--muted)">Amount paid</span>
+        <span style="font-weight:700;color:var(--indigo)">₹{{ '%.2f'|format(order.buyer_amount) }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--border);font-size:.9rem">
+        <span style="color:var(--muted)">Payment method</span>
+        <span>{{ '💳 Razorpay' if order.payment_method == 'razorpay' else '👛 Wallet' }}</span>
+      </div>
+      {% if order.razorpay_payment_id %}
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;font-size:.85rem">
+        <span style="color:var(--muted)">Transaction ID</span>
+        <span style="font-family:monospace;font-size:.78rem">{{ order.razorpay_payment_id }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Actions -->
+    <div class="fade-up fade-up-3" style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
+      <a href="{{ url_for('product.download', pid=product.id) }}"
+         class="btn btn-green btn-lg" style="flex:1;justify-content:center;min-width:180px">
+        ⬇️ Download Now
+      </a>
+      <a href="{{ url_for('product.detail', pid=product.id) }}"
+         class="btn btn-outline" style="flex:1;justify-content:center;min-width:180px">
+        View Product
+      </a>
+    </div>
+
+    <div class="fade-up fade-up-3">
+      <a href="{{ url_for('product.index') }}" style="display:block;margin-top:1.25rem;font-size:.88rem;color:var(--muted)">
+        ← Back to Marketplace
+      </a>
+    </div>
+
+  </div>
+</main>
+
+<footer><div class="container"><p>StudyMarket © 2024</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

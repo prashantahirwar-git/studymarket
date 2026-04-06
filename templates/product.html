@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ product.title }} — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <div class="nav-links">
+      <a href="{{ url_for('product.index') }}">← Marketplace</a>
+      {% if session.user_id %}
+        <a href="{{ url_for('wallet.dashboard') }}">👛 Wallet</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Login</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  <div class="container">
+    <div class="detail-layout">
+
+      <!-- ── Main info ───────────────────────────────────────────────────── -->
+      <div>
+        <div class="detail-main">
+          <!-- Type badge + title -->
+          <div style="margin-bottom:1rem">
+            <span class="card-type-badge type-{{ product.file_type }}">{{ product.file_type|upper }}</span>
+          </div>
+          <h1 style="font-size:1.7rem;margin-bottom:.75rem">{{ product.title }}</h1>
+
+          <!-- Meta tags -->
+          <div class="card-meta" style="margin-bottom:1rem">
+            {% if product.subject %}<span class="tag">📚 {{ product.subject }}</span>{% endif %}
+            {% if product.year_tag %}<span class="tag">📅 {{ product.year_tag }}</span>{% endif %}
+            {% if product.college  %}<span class="tag">🏫 {{ product.college }}</span>{% endif %}
+          </div>
+
+          <!-- Rating -->
+          <div class="stars" style="font-size:1.1rem;margin-bottom:1rem">
+            {% for i in range(5) %}{{ '★' if i < product.avg_rating|round|int else '☆' }}{% endfor %}
+            <span style="font-size:.88rem;color:var(--muted);margin-left:.4rem">
+              {{ "%.1f"|format(product.avg_rating) }} ({{ product.review_count }} review{{ 's' if product.review_count != 1 }})
+            </span>
+          </div>
+
+          <!-- Description -->
+          {% if product.description %}
+            <h3 style="margin-bottom:.6rem">About this material</h3>
+            <p style="color:var(--muted);line-height:1.7">{{ product.description }}</p>
+          {% endif %}
+
+          <!-- Downloads badge -->
+          <div style="margin-top:1.5rem;font-size:.87rem;color:var(--muted)">
+            ⬇️ {{ product.downloads }} downloads
+          </div>
+        </div>
+
+        <!-- ── Reviews ─────────────────────────────────────────────────── -->
+        <div class="detail-main" style="margin-top:1.5rem">
+          <h2 style="font-size:1.2rem;margin-bottom:1.25rem">💬 Reviews</h2>
+
+          {% if reviews %}
+            {% for r in reviews %}
+              <div class="review-card">
+                <div class="review-header">
+                  <span class="reviewer-name">{{ r.reviewer_name }}</span>
+                  <span class="review-date">{{ r.created_at.strftime('%b %d, %Y') if r.created_at else '' }}</span>
+                </div>
+                <div class="stars">
+                  {% for i in range(5) %}{{ '★' if i < r.rating else '☆' }}{% endfor %}
+                </div>
+                {% if r.comment %}
+                  <p style="font-size:.9rem;margin-top:.5rem;color:var(--muted)">{{ r.comment }}</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          {% else %}
+            <p style="color:var(--muted)">No reviews yet. Purchase to leave the first review!</p>
+          {% endif %}
+
+          <!-- Leave a review -->
+          {% if purchased and not reviewed %}
+            <div style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+              <h3 style="font-size:1rem;margin-bottom:1rem">✍️ Leave a Review</h3>
+              <form method="POST" action="{{ url_for('product.add_review', pid=product.id) }}">
+                <div style="margin-bottom:.75rem">
+                  <div style="display:flex;gap:.4rem;font-size:1.6rem;cursor:pointer">
+                    {% for i in range(5) %}
+                      <span class="star-input" style="color:#d1d5db">☆</span>
+                    {% endfor %}
+                  </div>
+                  <input type="hidden" id="rating-value" name="rating" value="5">
+                </div>
+                <div class="form-group">
+                  <textarea name="comment" rows="3" placeholder="Share your experience with this material…"
+                            style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:.7rem;font-family:inherit;font-size:.9rem"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Submit Review</button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+      <div class="detail-side">
+
+        <!-- Price card -->
+        <div class="detail-price-card">
+          <div class="big-price">
+            {{ '₹' + '%.0f'|format(product.price) if product.price > 0 else 'FREE' }}
+          </div>
+          <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
+            {{ 'One-time purchase' if product.price > 0 else 'No payment required' }}
+          </p>
+
+          {% if session.user_id %}
+            {% if purchased %}
+              <!-- Already purchased -->
+              <a href="{{ url_for('product.download', pid=product.id) }}"
+                 class="btn btn-green btn-lg" style="width:100%;justify-content:center">
+                ⬇️ Download File
+              </a>
+              <p style="font-size:.8rem;color:var(--green);margin-top:.6rem">✅ You own this material</p>
+            {% elif product.seller_id == session.user_id %}
+              <!-- Seller viewing own product -->
+              <a href="{{ url_for('product.download', pid=product.id) }}"
+                 class="btn btn-outline btn-lg" style="width:100%;justify-content:center">
+                ⬇️ Download (Your File)
+              </a>
+            {% else %}
+              <!-- Buy button -->
+              <form method="POST" action="{{ url_for('product.buy', pid=product.id) }}">
+                <button type="submit" class="btn btn-primary btn-lg"
+                        style="width:100%;justify-content:center">
+                  {{ '🛒 Buy Now — ₹' + '%.0f'|format(product.price) if product.price > 0 else '🔓 Get for Free' }}
+                </button>
+              </form>
+            {% endif %}
+          {% else %}
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg"
+               style="width:100%;justify-content:center">
+              Login to Purchase
+            </a>
+          {% endif %}
+        </div>
+
+        <!-- Info card -->
+        <div class="detail-info-card">
+          <h3 style="font-size:.95rem;margin-bottom.75rem">📋 Details</h3>
+          <div class="info-row">
+            <span class="label">Seller</span>
+            <span class="value">{{ product.seller_name }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">File type</span>
+            <span class="value">{{ product.file_type|upper }}</span>
+          </div>
+          {% if product.subject %}
+          <div class="info-row">
+            <span class="label">Subject</span>
+            <span class="value">{{ product.subject }}</span>
+          </div>
+          {% endif %}
+          {% if product.college %}
+          <div class="info-row">
+            <span class="label">College</span>
+            <span class="value">{{ product.college }}</span>
+          </div>
+          {% endif %}
+          {% if product.year_tag %}
+          <div class="info-row">
+            <span class="label">Year/Tag</span>
+            <span class="value">{{ product.year_tag }}</span>
+          </div>
+          {% endif %}
+          <div class="info-row">
+            <span class="label">Downloads</span>
+            <span class="value">{{ product.downloads }}</span>
+          </div>
+        </div>
+
+      </div><!-- /sidebar -->
+    </div><!-- /detail-layout -->
+  </div>
+</main>
+
+<footer><div class="container"><p>StudyMarket © 2024</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

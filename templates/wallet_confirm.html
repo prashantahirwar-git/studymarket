@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm Wallet Purchase — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <div class="nav-links">
+      <a href="{{ url_for('payment.checkout', pid=product.id) }}">← Back</a>
+    </div>
+  </div>
+</nav>
+
+<main style="display:flex;align-items:center;justify-content:center;padding:3rem 1rem">
+  <div style="background:var(--card-bg);border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow-lg);padding:2.5rem;max-width:480px;width:100%;text-align:center">
+
+    <!-- Step indicator -->
+    <div style="display:flex;justify-content:center;gap:.5rem;margin-bottom:1.75rem">
+      <div style="background:var(--indigo);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700">1</div>
+      <div style="height:2px;background:var(--indigo);width:60px;align-self:center"></div>
+      <div style="background:var(--border);color:var(--muted);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700">2</div>
+    </div>
+
+    <div style="font-size:3rem;margin-bottom:.75rem">👛</div>
+    <h2 style="margin-bottom:.4rem">Confirm Purchase</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.75rem">Step 1 of 2 — Review your order details</p>
+
+    <!-- Product info -->
+    <div style="background:var(--indigo-lite);border-radius:var(--radius-sm);padding:1.1rem;margin-bottom:1.5rem;text-align:left;border:1px solid #c7d2fe">
+      <div style="font-size:.75rem;color:var(--indigo);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem">You are buying</div>
+      <div style="font-weight:700;font-size:1rem">{{ product.title }}</div>
+      <div style="font-size:.83rem;color:var(--muted);margin-top:.2rem">
+        {{ product.file_type|upper }}{% if product.subject %} · {{ product.subject }}{% endif %}
+      </div>
+    </div>
+
+    <!-- Amount breakdown -->
+    <div style="background:var(--cream);border-radius:var(--radius-sm);padding:1.1rem;margin-bottom:1.75rem;text-align:left;border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;font-size:.9rem">
+        <span style="color:var(--muted)">Seller price</span>
+        <span>₹{{ '%.2f'|format(seller_price) }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;font-size:.9rem">
+        <span style="color:var(--muted)">Platform fee</span>
+        <span style="color:var(--green)">₹0.00 (waived for wallet)</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:.6rem 0 0;border-top:2px solid var(--border);margin-top:.4rem;font-weight:700;font-size:1.05rem">
+        <span>Total deducted</span>
+        <span style="color:var(--indigo)">₹{{ '%.2f'|format(seller_price) }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:.3rem 0;font-size:.83rem;color:var(--muted)">
+        <span>Wallet balance after</span>
+        <span>₹{{ '%.2f'|format(wallet_balance - seller_price) }}</span>
+      </div>
+    </div>
+
+    <!-- Step 1: "Yes I want to buy" -->
+    <p style="font-size:.9rem;font-weight:600;margin-bottom:1rem">Do you want to purchase this material?</p>
+
+    <div style="display:flex;gap:1rem;justify-content:center">
+      <a href="{{ url_for('payment.checkout', pid=product.id) }}" class="btn btn-outline" style="flex:1;justify-content:center">
+        ✕ Cancel
+      </a>
+      <form method="POST" action="{{ url_for('payment.wallet_execute', pid=product.id) }}" style="flex:1">
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
+          ✓ Yes, Buy Now →
+        </button>
+      </form>
+    </div>
+
+    <p style="font-size:.77rem;color:var(--muted);margin-top:1rem">
+      🔒 ₹{{ '%.2f'|format(seller_price) }} will be deducted from your wallet immediately and cannot be reversed.
+    </p>
+  </div>
+</main>
+
+<footer><div class="container"><p>StudyMarket © 2024</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

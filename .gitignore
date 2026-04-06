@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Env
+.env
+*.env
+
+# Uploads (store on Render disk or S3, not in git)
+uploads/pdfs/*
+uploads/docs/*
+uploads/ppts/*
+!uploads/pdfs/.gitkeep
+!uploads/docs/.gitkeep
+!uploads/ppts/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
