@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Notes — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <div class="nav-links">
+      <a href="{{ url_for('product.index') }}">Marketplace</a>
+      <a href="{{ url_for('product.seller_dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  <div class="container">
+    <div style="max-width:680px;margin:0 auto">
+      <div style="margin-bottom:2rem">
+        <h1 style="font-size:1.8rem">📤 Upload Study Material</h1>
+        <p style="color:var(--muted)">Share your notes and earn money. Your upload will be reviewed by admin before going live.</p>
+      </div>
+
+      <div class="form-card" style="max-width:100%">
+        <form method="POST" action="{{ url_for('product.upload') }}" enctype="multipart/form-data">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <!-- File Drop Zone -->
+          <div class="form-group">
+            <label>File <span style="color:var(--red)">*</span></label>
+            <div class="file-drop" id="file-drop">
+              <input type="file" name="file" id="file-input" accept=".pdf,.docx,.doc,.ppt,.pptx" required>
+              <div class="upload-icon">☁️</div>
+              <p class="file-label"><strong>Click to browse</strong> or drag & drop here</p>
+              <p style="font-size:.78rem;color:var(--muted);margin-top:.3rem">Supported: PDF, DOCX, DOC, PPT, PPTX · Max 50 MB</p>
+            </div>
+          </div>
+
+          <!-- Preview Image -->
+          <div class="form-group">
+            <label for="preview_image">Preview Image <span style="color:var(--muted);font-weight:400;font-size:.85rem">(optional — shown to buyers before purchase)</span></label>
+            <div class="file-drop" id="preview-drop" style="border-color:#c7d2fe;background:#f5f3ff">
+              <input type="file" name="preview_image" id="preview-input" accept=".jpg,.jpeg,.png,.webp">
+              <div id="preview-thumb" style="display:none;margin-bottom:.5rem">
+                <img id="preview-img" src="" alt="Preview" style="max-height:160px;border-radius:8px;object-fit:contain">
+              </div>
+              <div id="preview-placeholder">
+                <div class="upload-icon">🖼️</div>
+                <p class="file-label"><strong>Click to add a preview image</strong></p>
+              </div>
+              <p style="font-size:.78rem;color:var(--muted);margin-top:.3rem">JPG, PNG, WEBP · Recommended: first page screenshot or cover</p>
+            </div>
+          </div>
+
+          <!-- Title -->
+          <div class="form-group">
+            <label for="title">Title <span style="color:var(--red)">*</span></label>
+            <input type="text" id="title" name="title" required
+                   placeholder="e.g. Data Structures Complete Notes — B.Tech 3rd Year">
+          </div>
+
+          <!-- Description -->
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="4"
+                      placeholder="Briefly describe what's covered — topics, chapters, exam preparation tips…"></textarea>
+          </div>
+
+          <!-- Price + Subject -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="price">Price (₹) <span style="color:var(--red)">*</span></label>
+              <input type="number" id="price" name="price" min="0" step="1" value="0" required>
+              <p class="form-hint">Enter 0 for free materials.</p>
+            </div>
+            <div class="form-group">
+              <label for="subject">Subject</label>
+              <input type="text" id="subject" name="subject"
+                     placeholder="e.g. Data Structures">
+            </div>
+          </div>
+
+          <!-- College + Year -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="college">College / University</label>
+              <input type="text" id="college" name="college"
+                     placeholder="e.g. IIT Bombay">
+            </div>
+            <div class="form-group">
+              <label for="year_tag">Year / Semester</label>
+              <input type="text" id="year_tag" name="year_tag"
+                     placeholder="e.g. 2023, Sem 5, PYQ">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:.5rem">
+            📤 Submit for Review
+          </button>
+        </form>
+      </div>
+
+      <!-- Info box -->
+      <div style="background:var(--indigo-lite);border-radius:var(--radius);padding:1.25rem 1.5rem;margin-top:1.5rem;border:1px solid #c7d2fe">
+        <h3 style="font-size:.95rem;margin-bottom:.5rem;color:var(--indigo-dark)">📌 Upload Guidelines</h3>
+        <ul style="font-size:.87rem;color:var(--indigo-dark);padding-left:1.2rem;line-height:1.8">
+          <li>Ensure content is original or you have rights to share it.</li>
+          <li>No pirated or plagiarised material.</li>
+          <li>Files are reviewed within 24–48 hours.</li>
+          <li>Set fair prices — free notes get more downloads!</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="container"><p>StudyMarket © 2024</p></div>
+</footer>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+  // Live preview thumbnail for the preview image input
+  const previewInput = document.getElementById('preview-input');
+  const previewThumb = document.getElementById('preview-thumb');
+  const previewImg   = document.getElementById('preview-img');
+  const previewPH    = document.getElementById('preview-placeholder');
+
+  if (previewInput) {
+    previewInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          previewImg.src = e.target.result;
+          previewThumb.style.display = 'block';
+          previewPH.style.display    = 'none';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        previewThumb.style.display = 'none';
+        previewPH.style.display    = 'block';
+      }
+    });
+  }
+</script>
+</html>

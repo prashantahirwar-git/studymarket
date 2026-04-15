@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudyMarket — Buy & Sell Study Notes</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <button class="hamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="nav-links">
+      <a href="{{ url_for('product.index') }}">Marketplace</a>
+      {% if session.user_id %}
+        {% if session.user_role in ('seller','admin') %}
+          <a href="{{ url_for('product.upload') }}">Upload</a>
+          <a href="{{ url_for('product.seller_dashboard') }}">Dashboard</a>
+        {% endif %}
+        <a href="{{ url_for('product.cart') }}">My Purchases</a>
+        <a href="{{ url_for('wallet.dashboard') }}">👛 Wallet</a>
+        {% if session.user_role == 'admin' %}
+          <a href="{{ url_for('admin.dashboard') }}">Admin <span class="nav-badge">!</span></a>
+        {% endif %}
+        <a href="{{ url_for('auth.logout') }}" style="color:rgba(255,200,200,.85)">Logout</a>
+        <span style="color:rgba(255,255,255,.45);font-size:.83rem;padding:.4rem .5rem">{{ session.user_name }}</span>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Login</a>
+        <a href="{{ url_for('auth.register') }}" class="btn btn-amber btn-sm">Register</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">
+          {% if cat == 'success' %}✅{% elif cat == 'error' %}❌{% else %}ℹ️{% endif %} {{ msg }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<section class="hero">
+  <div class="container">
+    <h1>The Student <em>Marketplace</em><br>for Study Materials</h1>
+    <p>Find notes, PDFs, PPTs, and past papers from students at top colleges.</p>
+    <form method="GET" action="{{ url_for('product.index') }}" style="max-width:640px;margin:0 auto 1.5rem">
+      <div class="search-bar">
+        <input type="text" name="search" placeholder="Search notes, subjects, topics…" value="{{ search or '' }}">
+        <button type="submit">🔍 Search</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<main>
+  <div class="container">
+
+    <form method="GET" action="{{ url_for('product.index') }}">
+      {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+      <div class="filters">
+        <div class="filter-group">
+          <label>Subject</label>
+          <select name="subject">
+            <option value="">All Subjects</option>
+            {% for s in subjects %}
+              <option value="{{ s }}" {% if subject == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Max Price (₹)</label>
+          <input type="number" name="max_price" min="0" step="10" value="{{ max_price or '' }}" placeholder="e.g. 199">
+        </div>
+        <div class="filter-group">
+          <label>College</label>
+          <input type="text" name="college" value="{{ college or '' }}" placeholder="e.g. IIT Delhi">
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:.5rem">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          <a href="{{ url_for('product.index') }}" class="btn btn-outline">Clear</a>
+        </div>
+      </div>
+    </form>
+
+    <div style="display:grid;grid-template-columns:1fr 280px;gap:2rem;align-items:start" class="home-layout">
+      <div>
+        <div class="section-title">
+          📖 Latest Notes
+          {% if products %}<span style="font-size:.85rem;font-weight:400;color:var(--muted)">{{ products|length }} found</span>{% endif %}
+        </div>
+        {% if products %}
+          <div class="products-grid">
+            {% for p in products %}
+              {% set icon = '📄' if p.file_type == 'pdf' else ('📊' if p.file_type in ('ppt','pptx') else '📝') %}
+              <a href="{{ url_for('product.detail', pid=p.id) }}" class="product-card" style="color:inherit">
+                <div class="card-header">
+                  <div><div class="card-type-badge type-{{ p.file_type }}">{{ p.file_type|upper }}</div></div>
+                  <div class="card-icon">{{ icon }}</div>
+                </div>
+                <div class="card-body">
+                  <div class="card-title">{{ p.title }}</div>
+                  <div class="card-meta">
+                    {% if p.subject %}<span class="tag">{{ p.subject }}</span>{% endif %}
+                    {% if p.year_tag %}<span class="tag">{{ p.year_tag }}</span>{% endif %}
+                    {% if p.college %}<span class="tag" style="background:#f3f4f6;color:#374151">{{ p.college[:20] }}{% if p.college|length > 20 %}…{% endif %}</span>{% endif %}
+                  </div>
+                  {% if p.description %}<div class="card-desc">{{ p.description }}</div>{% endif %}
+                  <div class="stars" style="margin-top:.5rem">
+                    {% for i in range(5) %}{{ '★' if i < p.avg_rating|round|int else '☆' }}{% endfor %}
+                    <span style="font-size:.78rem;color:var(--muted);margin-left:.3rem">({{ p.review_count }})</span>
+                  </div>
+                </div>
+                <div class="card-footer">
+                  <span class="price {% if p.price == 0 %}price-free{% endif %}">
+                    {{ '₹' + '%.0f'|format(p.price) if p.price > 0 else 'FREE' }}
+                  </span>
+                  <span style="font-size:.8rem;color:var(--muted)">by {{ p.seller_name }}</span>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <h3>No notes found</h3>
+            <p>Try different search terms or clear the filters.</p>
+          </div>
+        {% endif %}
+      </div>
+
+      <div>
+        <div class="section-title" style="font-size:1.1rem">🏆 Top Sellers</div>
+        {% if top_sellers %}
+          <div class="sellers-list">
+            {% for s in top_sellers %}
+              <div class="seller-row">
+                <div class="seller-rank">{{ loop.index }}</div>
+                <div>
+                  <div class="seller-name">{{ s.name }}</div>
+                  <div style="font-size:.78rem;color:var(--muted)">{{ s.total_sales }} sales · ₹{{ '%.0f'|format(s.total_earnings or 0) }}</div>
+                </div>
+                {% if loop.index == 1 %}<span class="seller-badge">TOP</span>{% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p style="color:var(--muted);font-size:.9rem">No sales yet. Be the first!</p>
+        {% endif %}
+
+        {% if not session.user_id or session.user_role == 'buyer' %}
+          <div style="background:linear-gradient(135deg,var(--indigo),#818cf8);border-radius:var(--radius);padding:1.5rem;margin-top:1.5rem;color:#fff;text-align:center">
+            <div style="font-size:2rem;margin-bottom:.5rem">💡</div>
+            <h3 style="color:#fff;margin-bottom:.5rem">Have good notes?</h3>
+            <p style="font-size:.87rem;opacity:.85;margin-bottom:1rem">Register as a seller and earn money from your study materials!</p>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-amber btn-sm">Become a Seller</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>StudyMarket © 2024 — Student-to-Student Knowledge Exchange</p>
+    <p style="margin-top:.3rem">
+      <a href="{{ url_for('product.index') }}">Marketplace</a> ·
+      <a href="{{ url_for('auth.register') }}">Register</a> ·
+      <a href="{{ url_for('auth.login') }}">Login</a>
+    </p>
+  </div>
+</footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
