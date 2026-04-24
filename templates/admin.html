@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <div class="nav-links">
+      <a href="{{ url_for('product.index') }}">Marketplace</a>
+      <a href="{{ url_for('wallet.dashboard') }}">My Wallet</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+      <span style="color:rgba(255,255,255,.5);font-size:.85rem;padding:.4rem .6rem">🛡️ {{ session.user_name }}</span>
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  <div class="container">
+    <div style="margin-bottom:2rem">
+      <h1 style="font-size:1.8rem">🛡️ Admin Panel</h1>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" style="margin-bottom:2rem">
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-val">{{ users|length }}</div>
+        <div class="stat-lbl">Total Users</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📚</div>
+        <div class="stat-val">{{ products|length }}</div>
+        <div class="stat-lbl">Products</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color:var(--amber)">⏳</div>
+        <div class="stat-val" style="color:var(--amber)">{{ pending|length }}</div>
+        <div class="stat-lbl">Pending Review</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🛒</div>
+        <div class="stat-val">{{ orders|length }}</div>
+        <div class="stat-lbl">Total Orders</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">💰</div>
+        <div class="stat-val" style="font-size:1.4rem">₹{{ '%.0f'|format(total_revenue) }}</div>
+        <div class="stat-lbl">Total Revenue</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color:var(--red)">🏦</div>
+        <div class="stat-val" style="color:var(--red)">{{ pending_withdrawals|length }}</div>
+        <div class="stat-lbl">Pending Withdrawals</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn" data-tab="tab-pending">
+        ⏳ Pending{% if pending %} <span class="nav-badge">{{ pending|length }}</span>{% endif %}
+      </button>
+      <button class="tab-btn" data-tab="tab-withdrawals">
+        🏦 Withdrawals{% if pending_withdrawals %} <span class="nav-badge">{{ pending_withdrawals|length }}</span>{% endif %}
+      </button>
+      <button class="tab-btn" data-tab="tab-products">📚 Products</button>
+      <button class="tab-btn" data-tab="tab-users">👥 Users</button>
+      <button class="tab-btn" data-tab="tab-wallets">👛 Wallets</button>
+      <button class="tab-btn" data-tab="tab-orders">🛒 Orders</button>
+    </div>
+
+    <!-- ── Pending Content ─────────────────────────────────────────────── -->
+    <div id="tab-pending" class="tab-panel">
+      {% if pending %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Title</th><th>Seller</th><th>Subject</th><th>Price</th><th>Type</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for p in pending %}
+              <tr>
+                <td style="color:var(--muted);font-size:.82rem">{{ p.id }}</td>
+                <td><strong>{{ p.title[:50] }}{% if p.title|length > 50 %}…{% endif %}</strong></td>
+                <td>{{ p.seller_name }}</td>
+                <td>{{ p.subject or '—' }}</td>
+                <td>{{ '₹' + '%.0f'|format(p.price) if p.price > 0 else 'FREE' }}</td>
+                <td><span class="card-type-badge type-{{ p.file_type }}">{{ p.file_type|upper }}</span></td>
+                <td style="display:flex;gap:.4rem;flex-wrap:wrap">
+                  <form method="POST" action="{{ url_for('admin.approve_product', pid=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-green btn-sm">✅ Approve</button>
+                  </form>
+                  <form method="POST" action="{{ url_for('admin.reject_product', pid=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline btn-sm">❌ Reject</button>
+                  </form>
+                  <form method="POST" action="{{ url_for('admin.delete_product', pid=p.id) }}"
+                        onsubmit="return confirm('Delete permanently?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-red btn-sm">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><div class="empty-icon">✅</div><h3>No pending content</h3><p>All submissions reviewed.</p></div>
+      {% endif %}
+    </div>
+
+    <!-- ── Withdrawal Requests ─────────────────────────────────────────── -->
+    <div id="tab-withdrawals" class="tab-panel">
+      {% if withdrawals %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Bank</th><th>Account</th><th>IFSC</th><th>Status</th><th>Requested</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for w in withdrawals %}
+              <tr>
+                <td style="font-size:.82rem;color:var(--muted)">#{{ w.id }}</td>
+                <td><strong>{{ w.user_name }}</strong><br><span style="font-size:.78rem;color:var(--muted)">{{ w.email }}</span></td>
+                <td><strong>₹{{ '%.2f'|format(w.amount) }}</strong></td>
+                <td>{{ w.bank_name }}</td>
+                <td style="font-family:monospace;font-size:.85rem">****{{ w.account_number[-4:] }}<br><span style="font-size:.75rem;color:var(--muted)">{{ w.account_name }}</span></td>
+                <td style="font-family:monospace;font-size:.85rem">{{ w.ifsc_code }}</td>
+                <td><span class="status-pill status-{{ w.status }}">{{ w.status }}</span></td>
+                <td style="font-size:.82rem;color:var(--muted)">{{ w.created_at.strftime('%b %d, %Y') if w.created_at else '—' }}</td>
+                <td>
+                  {% if w.status == 'pending' %}
+                    <div style="display:flex;gap:.35rem;flex-direction:column">
+                      <form method="POST" action="{{ url_for('admin.approve_withdrawal', rid=w.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="admin_note" value="Transfer processed.">
+                        <button class="btn btn-green btn-sm" style="width:100%">✅ Approve</button>
+                      </form>
+                      <form method="POST" action="{{ url_for('admin.reject_withdrawal', rid=w.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="admin_note" value="Unable to process at this time.">
+                        <button class="btn btn-red btn-sm" style="width:100%">❌ Reject</button>
+                      </form>
+                    </div>
+                  {% else %}
+                    <span style="font-size:.8rem;color:var(--muted)">{{ w.admin_note or '—' }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><div class="empty-icon">🏦</div><h3>No withdrawal requests</h3></div>
+      {% endif %}
+    </div>
+
+    <!-- ── All Products ────────────────────────────────────────────────── -->
+    <div id="tab-products" class="tab-panel">
+      {% if products %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Title</th><th>Seller</th><th>Price</th><th>Status</th><th>Downloads</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for p in products %}
+              <tr>
+                <td style="font-size:.82rem;color:var(--muted)">{{ p.id }}</td>
+                <td><a href="{{ url_for('product.detail', pid=p.id) }}" style="font-weight:600">{{ p.title[:45] }}{% if p.title|length > 45 %}…{% endif %}</a></td>
+                <td>{{ p.seller_name }}</td>
+                <td>{{ '₹' + '%.0f'|format(p.price) if p.price > 0 else 'FREE' }}</td>
+                <td><span class="status-pill status-{{ p.status }}">{{ p.status }}</span></td>
+                <td>{{ p.downloads }}</td>
+                <td style="display:flex;gap:.35rem;flex-wrap:wrap">
+                  {% if p.status == 'pending' %}
+                    <form method="POST" action="{{ url_for('admin.approve_product', pid=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-green btn-sm">✅</button></form>
+                  {% endif %}
+                  <form method="POST" action="{{ url_for('admin.reject_product', pid=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline btn-sm">Reject</button></form>
+                  <form method="POST" action="{{ url_for('admin.delete_product', pid=p.id) }}" onsubmit="return confirm('Delete?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-red btn-sm">🗑️</button></form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><div class="empty-icon">📭</div><h3>No products yet</h3></div>
+      {% endif %}
+    </div>
+
+    <!-- ── Users ───────────────────────────────────────────────────────── -->
+    <div id="tab-users" class="tab-panel">
+      <div style="margin-bottom:1rem;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem">
+        <h3 style="font-size:.95rem;margin-bottom.75rem">💰 Manual Wallet Credit</h3>
+        <form method="POST" action="{{ url_for('admin.manual_credit') }}" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group" style="margin:0;flex:1;min-width:120px">
+            <label style="font-size:.8rem">User ID</label>
+            <input type="number" name="user_id" placeholder="User ID" required style="border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:.55rem .85rem;font-size:.9rem;width:100%">
+          </div>
+          <div class="form-group" style="margin:0;flex:1;min-width:120px">
+            <label style="font-size:.8rem">Amount (₹)</label>
+            <input type="number" name="amount" min="1" step="0.01" placeholder="₹ Amount" required style="border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:.55rem .85rem;font-size:.9rem;width:100%">
+          </div>
+          <div class="form-group" style="margin:0;flex:2;min-width:180px">
+            <label style="font-size:.8rem">Reason</label>
+            <input type="text" name="reason" placeholder="e.g. Refund / Bonus" style="border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:.55rem .85rem;font-size:.9rem;width:100%">
+          </div>
+          <button type="submit" class="btn btn-amber btn-sm">Credit Wallet</button>
+        </form>
+      </div>
+
+      {% if users %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td style="font-size:.82rem;color:var(--muted)">{{ u.id }}</td>
+                <td><strong>{{ u.name }}</strong></td>
+                <td style="font-size:.85rem;color:var(--muted)">{{ u.email }}</td>
+                <td><span class="status-pill {% if u.role=='admin' %}status-approved{% elif u.role=='seller' %}status-pending{% else %}status-rejected{% endif %}">{{ u.role }}</span></td>
+                <td style="font-size:.82rem;color:var(--muted)">{{ u.created_at.strftime('%b %d, %Y') if u.created_at else '—' }}</td>
+                <td style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+                  <form method="POST" action="{{ url_for('admin.change_role', uid=u.id) }}" style="display:flex;gap:.3rem;align-items:center">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="role" style="font-size:.82rem;border:1px solid var(--border);border-radius:4px;padding:.25rem .4rem">
+                      <option value="buyer" {% if u.role=='buyer' %}selected{% endif %}>buyer</option>
+                      <option value="seller" {% if u.role=='seller' %}selected{% endif %}>seller</option>
+                      <option value="admin" {% if u.role=='admin' %}selected{% endif %}>admin</option>
+                    </select>
+                    <button class="btn btn-outline btn-sm">Set</button>
+                  </form>
+                  {% if u.id != session.user_id %}
+                    <form method="POST" action="{{ url_for('admin.delete_user', uid=u.id) }}" onsubmit="return confirm('Delete {{ u.name }}?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn btn-red btn-sm">🗑️</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- ── Wallets Overview ────────────────────────────────────────────── -->
+    <div id="tab-wallets" class="tab-panel">
+      {% if wallets %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>User ID</th><th>Name</th><th>Email</th><th>Role</th><th>Wallet Balance</th><th>Last Updated</th></tr></thead>
+            <tbody>
+              {% for w in wallets %}
+              <tr>
+                <td style="font-size:.82rem;color:var(--muted)">{{ w.user_id }}</td>
+                <td><strong>{{ w.name }}</strong></td>
+                <td style="font-size:.85rem;color:var(--muted)">{{ w.email }}</td>
+                <td><span class="status-pill {% if w.role=='admin' %}status-approved{% elif w.role=='seller' %}status-pending{% else %}status-rejected{% endif %}">{{ w.role }}</span></td>
+                <td>
+                  <strong style="font-size:1.05rem;color:{% if w.balance > 0 %}var(--green){% else %}var(--muted){% endif %}">
+                    ₹{{ '%.2f'|format(w.balance) }}
+                  </strong>
+                </td>
+                <td style="font-size:.82rem;color:var(--muted)">{{ w.updated_at.strftime('%b %d, %Y %H:%M') if w.updated_at else '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><div class="empty-icon">👛</div><h3>No wallets yet</h3></div>
+      {% endif %}
+    </div>
+
+    <!-- ── Orders ──────────────────────────────────────────────────────── -->
+    <div id="tab-orders" class="tab-panel">
+      {% if orders %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Order ID</th><th>Buyer</th><th>Product</th><th>Seller Price</th><th>Buyer Paid</th><th>Method</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for o in orders %}
+              <tr>
+                <td style="font-family:monospace;font-size:.82rem">#{{ o.id }}</td>
+                <td>{{ o.buyer_name }}</td>
+                <td>{{ o.product_title[:35] }}{% if o.product_title|length > 35 %}…{% endif %}</td>
+                <td>₹{{ '%.2f'|format(o.seller_price) }}</td>
+                <td>₹{{ '%.2f'|format(o.buyer_amount) }}</td>
+                <td>
+                  <span style="font-size:.8rem">{{ '💳 Razorpay' if o.payment_method == 'razorpay' else '👛 Wallet' }}</span>
+                </td>
+                <td><span class="status-pill status-{{ o.payment_status }}">{{ o.payment_status }}</span></td>
+                <td style="font-size:.82rem;color:var(--muted)">{{ o.created_at.strftime('%b %d, %Y') if o.created_at else '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><div class="empty-icon">🛒</div><h3>No orders yet</h3></div>
+      {% endif %}
+    </div>
+
+  </div>
+</main>
+
+<footer><div class="container"><p>StudyMarket © 2024 — Admin Panel</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

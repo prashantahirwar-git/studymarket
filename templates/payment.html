@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complete Payment — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <style>
+    .upi-steps { text-align:left; margin: 1.25rem 0; }
+    .upi-steps li { padding: .4rem 0; font-size:.9rem; color:var(--muted); }
+    .upi-steps li strong { color: var(--ink); }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  <div class="container">
+    <div class="payment-card">
+
+      <div style="font-size:2.5rem;margin-bottom:.5rem">💳</div>
+      <h2 style="margin-bottom:.25rem">Complete Payment</h2>
+      <p style="color:var(--muted);font-size:.9rem">Secure payment via Razorpay</p>
+
+      <!-- Product summary -->
+      <div style="background:var(--indigo-lite);border-radius:var(--radius-sm);padding:1rem 1.25rem;
+                  margin:1.25rem 0;text-align:left;border:1px solid #c7d2fe">
+        <div style="font-size:.8rem;color:var(--indigo);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem">Purchasing</div>
+        <div style="font-weight:700;font-size:1rem">{{ product.title }}</div>
+        <div style="font-size:.85rem;color:var(--muted);margin-top:.2rem">
+          {{ product.file_type|upper }} · {{ product.subject or 'General' }}
+        </div>
+      </div>
+
+      <!-- Amount — use buyer_amount (the correct column name) -->
+      <div style="font-family:'Sora',sans-serif;font-size:2.8rem;font-weight:800;color:var(--indigo);margin:.5rem 0">
+        ₹{{ '%.2f'|format(order.buyer_amount) }}
+      </div>
+
+      <p style="color:var(--muted);font-size:.88rem;margin-bottom:1.5rem">
+        Please use the Razorpay checkout to complete your payment.
+      </p>
+
+      <!-- Redirect to checkout with Razorpay -->
+      <a href="{{ url_for('payment.checkout', pid=product.id) }}"
+         class="btn btn-primary btn-lg" style="width:100%;justify-content:center">
+        💳 Complete Payment via Razorpay
+      </a>
+
+      <a href="{{ url_for('product.detail', pid=product.id) }}"
+         style="display:block;margin-top:1rem;font-size:.85rem;color:var(--muted);text-align:center">
+        ← Cancel and go back
+      </a>
+
+    </div>
+  </div>
+</main>
+
+<footer><div class="container"><p>StudyMarket © 2024</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

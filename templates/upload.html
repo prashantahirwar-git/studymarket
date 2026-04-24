@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Notes — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <style>
+    /* Preview section */
+
+    .preview-tabs { display:flex; gap:.5rem; margin-bottom:.75rem; }
+    .preview-tab {
+      flex:1; padding:.55rem .75rem; border:1.5px solid var(--border);
+      border-radius:var(--radius-sm); background:var(--cream); cursor:pointer;
+      font-size:.82rem; font-weight:600; color:var(--muted);
+      text-align:center; transition:var(--transition); user-select:none;
+    }
+    .preview-tab.active {
+      border-color:var(--indigo); background:var(--indigo-lite); color:var(--indigo-dark);
+    }
+
+    /* Auto-capture panel */
+    #auto-panel {
+      border:2px solid #c7d2fe; border-radius:var(--radius); overflow:hidden;
+    }
+    #pdf-canvas-wrap {
+      background:#e0e7ff; display:flex; align-items:center;
+      justify-content:center; min-height:180px; padding:1rem;
+    }
+    #pdf-canvas { max-width:100%; max-height:300px; border-radius:4px;
+                  box-shadow:0 2px 12px rgba(0,0,0,.15); display:none; }
+    #pdf-loading { color:var(--indigo-dark); font-size:.88rem; text-align:center; }
+    .capture-bar {
+      padding:.75rem 1rem; border-top:1px solid #c7d2fe; background:#ede9fe;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:.75rem; flex-wrap:wrap;
+    }
+    .capture-status { font-size:.82rem; color:var(--indigo-dark); font-weight:500; }
+    .capture-status.ok { color:#065f46; }
+    #btn-capture {
+      font-size:.82rem; padding:.4rem .9rem; border-radius:var(--radius-sm);
+      border:none; background:var(--indigo); color:#fff; cursor:pointer;
+      font-weight:600; transition:var(--transition);
+    }
+    #btn-capture:hover:not(:disabled) { background:var(--indigo-dark); }
+    #btn-capture:disabled { background:#9ca3af; cursor:not-allowed; }
+
+    /* Manual upload zone */
+    .upload-zone {
+      border:2px dashed #c7d2fe; border-radius:var(--radius);
+      background:#f5f3ff; padding:2rem; text-align:center;
+      cursor:pointer; transition:var(--transition);
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color:var(--indigo); background:var(--indigo-lite);
+    }
+    .upload-zone .uz-icon { font-size:2.2rem; margin-bottom:.4rem; }
+    .upload-zone .uz-label { font-size:.9rem; color:var(--muted); }
+    .upload-zone .uz-label strong { color:var(--indigo); }
+    .upload-zone .uz-hint { font-size:.76rem; color:var(--muted); margin-top:.3rem; }
+
+    /* Non-PDF notice */
+    #non-pdf-hint {
+      display:none; background:#fef3c7; border:1.5px solid #fcd34d;
+      border-radius:var(--radius-sm); padding:.65rem .9rem;
+      font-size:.83rem; color:#92400e; margin-bottom:.75rem;
+    }
+
+    /* Result thumbnail */
+    #preview-result {
+      margin-top:.75rem; display:none; border-radius:var(--radius);
+      overflow:hidden; border:1.5px solid #6ee7b7;
+    }
+    #preview-result img {
+      display:block; max-height:200px; width:100%;
+      object-fit:contain; background:#f8fafc;
+    }
+    #preview-result-bar {
+      padding:.4rem .75rem; font-size:.78rem; color:#065f46;
+      font-weight:600; background:#d1fae5;
+    }
+
+    /* Badge on label */
+    .ready-badge {
+      display:none; font-size:.74rem; font-weight:500;
+      background:#d1fae5; color:#065f46;
+      padding:.1rem .45rem; border-radius:999px; margin-left:.4rem;
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <div class="nav-links">
+      <a href="{{ url_for('product.index') }}">Marketplace</a>
+      <a href="{{ url_for('product.seller_dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  <div class="container">
+    <div style="max-width:680px;margin:0 auto">
+      <div style="margin-bottom:2rem">
+        <h1 style="font-size:1.8rem">📤 Upload Study Material</h1>
+        <p style="color:var(--muted)">Share your notes and earn money. Your upload goes live immediately.</p>
+      </div>
+
+      <div class="form-card" style="max-width:100%">
+        <form method="POST" action="{{ url_for('product.upload') }}"
+              enctype="multipart/form-data" id="upload-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <!--
+            preview_base64 : data URL string set by PDF auto-capture.
+            preview_image  : file set by manual image upload.
+            Backend checks preview_base64 first, then preview_image.
+            Both inputs are always in the DOM (never inside a hidden parent)
+            so they always submit correctly.
+          -->
+          <input type="hidden" name="preview_base64" id="preview-base64" value="">
+          <!--
+            preview_image is outside all panels so it ALWAYS submits.
+            It's hidden visually with display:none on the input itself.
+          -->
+          <input type="file" name="preview_image" id="preview-input"
+                 accept=".jpg,.jpeg,.png,.webp" style="display:none">
+
+          <!-- ── Step 1: Document ──────────────────────────────────────── -->
+          <div class="form-group">
+            <label>Document File <span style="color:var(--red)">*</span></label>
+            <div class="file-drop" id="file-drop">
+              <input type="file" name="file" id="file-input"
+                     accept=".pdf,.docx,.doc,.ppt,.pptx" required>
+              <div class="upload-icon" id="doc-icon">☁️</div>
+              <p class="file-label" id="doc-label">
+                <strong>Click to browse</strong> or drag &amp; drop here
+              </p>
+              <p style="font-size:.78rem;color:var(--muted);margin-top:.3rem">
+                PDF, DOCX, DOC, PPT, PPTX · Max 50 MB
+              </p>
+            </div>
+          </div>
+
+          <!-- ── Step 2: Preview (shown after doc picked) ──────────────── -->
+          <div class="form-group" id="preview-section" style="display:none">
+            <label>
+              Preview Image <span style="color:var(--red)">*</span>
+              <span class="ready-badge" id="preview-badge">✓ Ready</span>
+            </label>
+            <p style="font-size:.83rem;color:var(--muted);margin-top:-.3rem;margin-bottom:.75rem">
+              Buyers see this before purchasing — make it clear and readable.
+            </p>
+
+            <div id="non-pdf-hint">
+              📄 <strong>DOCX / PPT detected</strong> — browser can't render these automatically.
+              Please upload a screenshot or photo of your first page.
+            </div>
+
+            <!-- Tabs: only shown for PDF -->
+            <div class="preview-tabs" id="mode-tabs" style="display:none">
+              <div class="preview-tab active" id="tab-auto" onclick="switchTab('auto')">
+                ⚡ Auto-capture page 1
+              </div>
+              <div class="preview-tab" id="tab-manual" onclick="switchTab('manual')">
+                🖼️ Upload image instead
+              </div>
+            </div>
+
+            <!-- Auto-capture panel -->
+            <div id="auto-panel" style="display:none">
+              <div id="pdf-canvas-wrap">
+                <div id="pdf-loading">
+                  <div style="font-size:1.5rem;margin-bottom:.5rem">⏳</div>
+                  Rendering first page…
+                </div>
+                <canvas id="pdf-canvas"></canvas>
+              </div>
+              <div class="capture-bar">
+                <span class="capture-status" id="capture-status">
+                  Click to capture page 1 as your preview →
+                </span>
+                <button type="button" id="btn-capture" disabled onclick="captureCanvas()">
+                  📸 Use this page as preview
+                </button>
+              </div>
+            </div>
+
+            <!-- Manual upload zone — NOT a .file-drop (that CSS hides its inputs) -->
+            <div id="manual-panel" style="display:none">
+              <div class="upload-zone" id="preview-drop-zone">
+                <div class="uz-icon">🖼️</div>
+                <p class="uz-label"><strong>Click to upload preview image</strong></p>
+                <p class="uz-hint">JPG, PNG, WEBP · Max 5 MB</p>
+              </div>
+            </div>
+
+            <!-- Shared result thumbnail -->
+            <div id="preview-result">
+              <img id="preview-result-img" src="" alt="Preview">
+              <div id="preview-result-bar">✅ Preview ready — buyers will see this image</div>
+            </div>
+          </div>
+
+          <!-- ── Title ──────────────────────────────────────────────────── -->
+          <div class="form-group">
+            <label for="title">Title <span style="color:var(--red)">*</span></label>
+            <input type="text" id="title" name="title" required
+                   placeholder="e.g. Data Structures Complete Notes — B.Tech 3rd Year">
+          </div>
+
+          <!-- ── Description ────────────────────────────────────────────── -->
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="4"
+              placeholder="Briefly describe what's covered — topics, chapters, exam tips…"></textarea>
+          </div>
+
+          <!-- ── Price + Subject ────────────────────────────────────────── -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="price">Price (₹) <span style="color:var(--red)">*</span></label>
+              <input type="number" id="price" name="price" min="0" step="1" value="0" required>
+              <p class="form-hint">Enter 0 for free materials.</p>
+            </div>
+            <div class="form-group">
+              <label for="subject">Subject</label>
+              <input type="text" id="subject" name="subject" placeholder="e.g. Data Structures">
+            </div>
+          </div>
+
+          <!-- ── College + Year ─────────────────────────────────────────── -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="college">College / University</label>
+              <input type="text" id="college" name="college" placeholder="e.g. IIT Bombay">
+            </div>
+            <div class="form-group">
+              <label for="year_tag">Year / Semester</label>
+              <input type="text" id="year_tag" name="year_tag"
+                     placeholder="e.g. 2023, Sem 5, PYQ">
+            </div>
+          </div>
+
+          <button type="submit" id="submit-btn" class="btn btn-primary btn-lg"
+                  style="width:100%;justify-content:center;margin-top:.5rem">
+            📤 Submit Material
+          </button>
+        </form>
+      </div>
+
+      <!-- Guidelines -->
+      <div style="background:var(--indigo-lite);border-radius:var(--radius);
+                  padding:1.25rem 1.5rem;margin-top:1.5rem;border:1px solid #c7d2fe">
+        <h3 style="font-size:.95rem;margin-bottom:.5rem;color:var(--indigo-dark)">📌 Guidelines</h3>
+        <ul style="font-size:.87rem;color:var(--indigo-dark);padding-left:1.2rem;line-height:1.8">
+          <li>Content must be original or you must have rights to share it.</li>
+          <li>No pirated or plagiarised material.</li>
+          <li>PDF uploads: page 1 is rendered automatically — one click to capture.</li>
+          <li>DOCX / PPT: upload a screenshot of your first page as preview.</li>
+          <li>Your upload goes live immediately once submitted.</li>
+          <li>Set fair prices — free notes get more downloads!</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="container"><p>StudyMarket © 2024</p></div>
+</footer>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+/* =========================================================================
+   Upload page — preview section logic
+
+   Architecture:
+   • #preview-input  (file, always in DOM, never hidden inside a panel)
+   • #preview-base64 (hidden text, holds dataURL for PDF auto-capture)
+   Backend reads preview_base64 first; falls back to preview_image file.
+
+   Bugs fixed vs previous version:
+   1. #preview-drop had no click/drag handler → can't pick file. Fixed: we
+      use a custom .upload-zone div with explicit click + drag handlers.
+   2. Drag-drop on #file-drop set .files directly without firing 'change',
+      so preview section never appeared. Fixed: explicit dispatchEvent.
+   3. Duplicate 'change' listeners (main.js + inline). Fixed: main.js only
+      handles label update; all preview logic is here.
+   4. preview_image file input was inside a display:none panel → browser
+      skips it on submit. Fixed: input is now at top level, always visible
+      to the browser (just not visible to the user).
+   ========================================================================= */
+
+let isPDF       = false;
+let currentMode = 'auto';   // 'auto' | 'manual'
+let pdfRendered = false;
+let pdfJsLoaded = false;
+
+/* DOM refs */
+const fileInput       = document.getElementById('file-input');
+const docLabel        = document.getElementById('doc-label');
+const previewSection  = document.getElementById('preview-section');
+const modeTabs        = document.getElementById('mode-tabs');
+const autoPanel       = document.getElementById('auto-panel');
+const manualPanel     = document.getElementById('manual-panel');
+const nonPdfHint      = document.getElementById('non-pdf-hint');
+const previewInput    = document.getElementById('preview-input');   // always-submitted file input
+const previewBase64   = document.getElementById('preview-base64'); // always-submitted hidden field
+const previewResult   = document.getElementById('preview-result');
+const previewResultImg= document.getElementById('preview-result-img');
+const previewBadge    = document.getElementById('preview-badge');
+const captureStatus   = document.getElementById('capture-status');
+const btnCapture      = document.getElementById('btn-capture');
+const pdfCanvas       = document.getElementById('pdf-canvas');
+const pdfLoading      = document.getElementById('pdf-loading');
+const previewDropZone = document.getElementById('preview-drop-zone');
+
+/* ── Document file: click on the drop zone ─────────────────────────────── */
+// main.js already handles #file-drop click → fileInput.click()
+// We also need to handle drag-drop and fire 'change' manually
+
+const fileDropDiv = document.getElementById('file-drop');
+if (fileDropDiv) {
+  fileDropDiv.addEventListener('dragover', e => {
+    e.preventDefault(); fileDropDiv.classList.add('drag-over');
+  });
+  fileDropDiv.addEventListener('dragleave', () => fileDropDiv.classList.remove('drag-over'));
+  fileDropDiv.addEventListener('drop', e => {
+    e.preventDefault();
+    fileDropDiv.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+    // Use DataTransfer to set files on the input, then manually fire 'change'
+    const dt = new DataTransfer();
+    dt.items.add(files[0]);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+/* ── Document file: change → show preview section ──────────────────────── */
+fileInput.addEventListener('change', function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  docLabel.innerHTML = '<strong>📎 ' + file.name + '</strong>';
+  resetPreviewState();
+
+  isPDF = file.name.toLowerCase().endsWith('.pdf');
+  previewSection.style.display = 'block';
+
+  if (isPDF) {
+    nonPdfHint.style.display = 'none';
+    modeTabs.style.display   = 'flex';
+    showAutoPanel();
+    renderPDF(file);
+  } else {
+    modeTabs.style.display   = 'none';
+    nonPdfHint.style.display = 'block';
+    showManualPanel();
+  }
+});
+
+/* ── Preview drop zone: click ───────────────────────────────────────────── */
+// previewDropZone is a plain div (not .file-drop) so CSS doesn't hide its input
+// We manually wire click and drag-drop to #preview-input
+previewDropZone.addEventListener('click', () => previewInput.click());
+
+previewDropZone.addEventListener('dragover', e => {
+  e.preventDefault(); previewDropZone.classList.add('drag-over');
+});
+previewDropZone.addEventListener('dragleave', () => previewDropZone.classList.remove('drag-over'));
+previewDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  previewDropZone.classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  if (!files.length) return;
+  const dt = new DataTransfer();
+  dt.items.add(files[0]);
+  previewInput.files = dt.files;
+  previewInput.dispatchEvent(new Event('change', { bubbles: true }));
+});
+
+/* ── Preview file: change ───────────────────────────────────────────────── */
+previewInput.addEventListener('change', function () {
+  const file = this.files[0];
+  if (!file) { hideResult(); return; }
+
+  // Validate type client-side
+  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) {
+    alert('Please select a JPG, PNG, or WEBP image.');
+    previewInput.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Preview image must be under 5 MB.');
+    previewInput.value = '';
+    return;
+  }
+
+  // Clear base64 — file upload takes over
+  previewBase64.value = '';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    showResult(e.target.result);
+    // Update drop zone label
+    previewDropZone.querySelector('.uz-label').innerHTML =
+      '<strong>📎 ' + file.name + '</strong>';
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ── Tab switching ──────────────────────────────────────────────────────── */
+function switchTab(mode) {
+  currentMode = mode;
+  document.getElementById('tab-auto').classList.toggle('active', mode === 'auto');
+  document.getElementById('tab-manual').classList.toggle('active', mode === 'manual');
+
+  if (mode === 'auto') {
+    showAutoPanel();
+    // Restore captured state if available
+    if (previewBase64.value) {
+      showResult(previewBase64.value);
+    } else {
+      hideResult();
+    }
+    // Clear manual file so only base64 submits
+    previewInput.value = '';
+  } else {
+    showManualPanel();
+    // Clear base64 so only the file submits
+    previewBase64.value = '';
+    hideResult();
+  }
+}
+
+function showAutoPanel()   { autoPanel.style.display = 'block';  manualPanel.style.display = 'none'; }
+function showManualPanel() { manualPanel.style.display = 'block'; autoPanel.style.display  = 'none'; }
+
+/* ── PDF rendering ──────────────────────────────────────────────────────── */
+async function renderPDF(file) {
+  if (!pdfJsLoaded) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfJsLoaded = true;
+  }
+  try {
+    const buf      = await file.arrayBuffer();
+    const pdf      = await pdfjsLib.getDocument({ data: buf }).promise;
+    const page     = await pdf.getPage(1);
+    const vp0      = page.getViewport({ scale: 1 });
+    const scale    = Math.min(600 / vp0.width, 2);
+    const vp       = page.getViewport({ scale });
+
+    pdfCanvas.width  = vp.width;
+    pdfCanvas.height = vp.height;
+    await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
+
+    pdfLoading.style.display = 'none';
+    pdfCanvas.style.display  = 'block';
+    btnCapture.disabled      = false;
+    pdfRendered              = true;
+  } catch (err) {
+    pdfLoading.innerHTML =
+      '⚠️ Could not render this PDF in the browser.<br>'
+      + '<small style="color:#6b7280">Use the "Upload image" tab instead.</small>';
+    // Auto-switch to manual tab so user isn't stuck
+    if (modeTabs.style.display !== 'none') {
+      setTimeout(() => switchTab('manual'), 1800);
+    }
+  }
+}
+
+/* ── PDF capture → base64 hidden field ──────────────────────────────────── */
+function captureCanvas() {
+  if (!pdfRendered) return;
+
+  const dataURL = pdfCanvas.toDataURL('image/png');
+  previewBase64.value = dataURL;
+
+  // Clear any manual file so they don't conflict
+  previewInput.value = '';
+
+  showResult(dataURL);
+  captureStatus.textContent = '✓ Page 1 captured!';
+  captureStatus.classList.add('ok');
+  btnCapture.textContent = '✓ Captured — click to re-capture';
+}
+
+/* ── Result helpers ─────────────────────────────────────────────────────── */
+function showResult(src) {
+  previewResultImg.src        = src;
+  previewResult.style.display = 'block';
+  previewBadge.style.display  = 'inline';
+}
+function hideResult() {
+  previewResult.style.display = 'none';
+  previewBadge.style.display  = 'none';
+}
+
+/* ── Reset when new doc is picked ───────────────────────────────────────── */
+function resetPreviewState() {
+  previewBase64.value        = '';
+  previewInput.value         = '';
+  pdfRendered                = false;
+  pdfCanvas.style.display    = 'none';
+  pdfLoading.style.display   = 'block';
+  pdfLoading.innerHTML       =
+    '<div style="font-size:1.5rem;margin-bottom:.5rem">⏳</div>Rendering first page…';
+  btnCapture.disabled        = true;
+  btnCapture.textContent     = '📸 Use this page as preview';
+  captureStatus.textContent  = 'Click to capture page 1 as your preview →';
+  captureStatus.classList.remove('ok');
+  previewDropZone.querySelector('.uz-label').innerHTML =
+    '<strong>Click to upload preview image</strong>';
+  hideResult();
+}
+
+/* ── Submit guard ───────────────────────────────────────────────────────── */
+document.getElementById('upload-form').addEventListener('submit', function (e) {
+  // Only validate if preview section is visible (i.e. a doc has been picked)
+  if (previewSection.style.display === 'none') {
+    e.preventDefault();
+    alert('Please select a document file first.');
+    return;
+  }
+  const hasBase64 = previewBase64.value.length > 50; // dataURL is always long
+  const hasFile   = previewInput.files && previewInput.files.length > 0;
+  if (!hasBase64 && !hasFile) {
+    e.preventDefault();
+    previewSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    previewSection.style.outline = '2px solid #ef4444';
+    setTimeout(() => previewSection.style.outline = '', 2500);
+    alert(isPDF
+      ? 'Please click "📸 Use this page as preview" or switch to "Upload image" tab.'
+      : 'Please upload a preview image before submitting.');
+  }
+});
+
+/* ── Script loader ──────────────────────────────────────────────────────── */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seller Dashboard — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+    <div class="nav-links">
+      <a href="{{ url_for('product.index') }}">Marketplace</a>
+      <a href="{{ url_for('product.upload') }}">Upload Notes</a>
+      <a href="{{ url_for('product.cart') }}">My Purchases</a>
+      <a href="{{ url_for('wallet.dashboard') }}">👛 Wallet</a>
+      <a href="{{ url_for('auth.logout') }}" style="color:rgba(255,200,200,.85)">Logout</a>
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:1rem">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>
+  <div class="container">
+
+    <!-- Page header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:2rem">
+      <div>
+        <h1 style="font-size:1.8rem">📊 Seller Dashboard</h1>
+        <p style="color:var(--muted)">Welcome, {{ session.user_name }}! Here's your activity overview.</p>
+      </div>
+      <a href="{{ url_for('product.upload') }}" class="btn btn-primary">
+        ➕ Upload New Notes
+      </a>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">📚</div>
+        <div class="stat-val">{{ products|length }}</div>
+        <div class="stat-lbl">Total Uploads</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-val">{{ products|selectattr('status','eq','approved')|list|length }}</div>
+        <div class="stat-lbl">Approved</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⬇️</div>
+        <div class="stat-val">{{ products|sum(attribute='downloads') }}</div>
+        <div class="stat-lbl">Total Downloads</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🛒</div>
+        <div class="stat-val">{{ total_sales }}</div>
+        <div class="stat-lbl">Total Sales</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">💰</div>
+        <div class="stat-val" style="font-size:1.5rem">₹{{ '%.0f'|format(total_earnings) }}</div>
+        <div class="stat-lbl">Total Earnings</div>
+      </div>
+    </div>
+
+    <!-- Top seller badge -->
+    {% if total_sales >= 10 %}
+      <div style="background:linear-gradient(135deg,#f59e0b,#fbbf24);border-radius:var(--radius);padding:1rem 1.5rem;margin-bottom:2rem;display:flex;align-items:center;gap:1rem;color:#fff">
+        <span style="font-size:2rem">🏆</span>
+        <div>
+          <strong style="font-size:1.05rem">Top Seller Badge Unlocked!</strong>
+          <p style="font-size:.87rem;opacity:.9;margin-top:.1rem">You've crossed 10 sales. Keep up the great work!</p>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Uploaded notes table -->
+    <div class="section-title">📋 Your Uploaded Materials</div>
+
+    {% if products %}
+      <div class="table-wrap" style="margin-bottom:2.5rem">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Price</th>
+              <th>Status</th>
+              <th>Sales</th>
+              <th>Earnings</th>
+              <th>Downloads</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in products %}
+            <tr>
+              <td style="color:var(--muted);font-size:.85rem">{{ loop.index }}</td>
+              <td>
+                <a href="{{ url_for('product.detail', pid=p.id) }}" style="font-weight:600">
+                  {{ p.title[:45] }}{% if p.title|length > 45 %}…{% endif %}
+                </a>
+                <div style="font-size:.75rem;color:var(--muted)">{{ p.file_type|upper }} · {{ p.year_tag or '—' }}</div>
+              </td>
+              <td>{{ p.subject or '—' }}</td>
+              <td>
+                <strong>{{ '₹' + '%.0f'|format(p.price) if p.price > 0 else 'FREE' }}</strong>
+              </td>
+              <td><span class="status-pill status-{{ p.status }}">{{ p.status }}</span></td>
+              <td>{{ p.total_sales }}</td>
+              <td>₹{{ '%.0f'|format(p.total_earnings or 0) }}</td>
+              <td>{{ p.downloads }}</td>
+              <td>
+                {% if p.status == 'approved' %}
+                  <a href="{{ url_for('product.detail', pid=p.id) }}" class="btn btn-outline btn-sm">View</a>
+                {% else %}
+                  <span style="font-size:.8rem;color:var(--muted)">Awaiting review</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>No uploads yet</h3>
+        <p>Start earning by uploading your first study material!</p>
+        <a href="{{ url_for('product.upload') }}" class="btn btn-primary" style="margin-top:1rem">Upload Now</a>
+      </div>
+    {% endif %}
+
+  </div>
+</main>
+
+<footer><div class="container"><p>StudyMarket © 2024</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

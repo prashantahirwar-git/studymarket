@@ -1,0 +1,314 @@
+"""
+Product routes — uses services.storage for all file operations.
+Works with both Supabase Storage (production) and local disk (dev).
+"""
+import os
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+from flask import (Blueprint, render_template, request, redirect,
+                   url_for, session, flash, abort)
+from config import ALLOWED_EXTENSIONS
+from models import product_model, order_model, review_model
+from services.storage import upload_file, delete_file, get_download_response, is_supabase_enabled, upload_preview_image
+from routes.utils import login_required
+
+product_bp = Blueprint("product", __name__)
+
+# ── Simple in-process subject cache (TTL 5 min) ───────────────────────────────
+_subjects_cache: list = []
+_subjects_cache_time: float = 0.0
+_SUBJECTS_TTL = 300  # seconds
+
+
+def _get_cached_subjects() -> list:
+    global _subjects_cache, _subjects_cache_time
+    if time.time() - _subjects_cache_time > _SUBJECTS_TTL:
+        _subjects_cache      = product_model.get_distinct_subjects()
+        _subjects_cache_time = time.time()
+    return _subjects_cache
+
+
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+@product_bp.route("/")
+def index():
+    search    = request.args.get("search", "").strip()
+    subject   = request.args.get("subject", "").strip()
+    max_price = request.args.get("max_price", "")
+    college   = request.args.get("college", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+
+    per_page = 20
+
+    products, total = product_model.get_approved_products(
+        search    = search    or None,
+        subject   = subject   or None,
+        max_price = float(max_price) if max_price else None,
+        college   = college   or None,
+        page      = page,
+        per_page  = per_page,
+    )
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    subjects    = _get_cached_subjects()
+    top_sellers = product_model.get_top_sellers(5)
+
+    return render_template("index.html",
+                           products=products, subjects=subjects,
+                           top_sellers=top_sellers, search=search,
+                           subject=subject, max_price=max_price, college=college,
+                           page=page, total_pages=total_pages, total=total)
+
+
+@product_bp.route("/upload", methods=["GET", "POST"])
+@login_required
+def upload():
+    if session.get("user_role") not in ("seller", "admin"):
+        flash("Only sellers can upload materials.", "error")
+        return redirect(url_for("product.index"))
+
+    if request.method == "POST":
+        title       = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        price       = request.form.get("price", "0")
+        subject     = request.form.get("subject", "").strip()
+        college     = request.form.get("college", "").strip()
+        year_tag    = request.form.get("year_tag", "").strip()
+        file_obj    = request.files.get("file")
+
+        # ── Validation ────────────────────────────────────────────────────────
+        if not title:
+            flash("Title is required.", "error")
+            return render_template("upload.html")
+        if not file_obj or file_obj.filename == "":
+            flash("Please select a file to upload.", "error")
+            return render_template("upload.html")
+        if not allowed_file(file_obj.filename):
+            flash("Allowed file types: PDF, DOCX, DOC, PPT, PPTX.", "error")
+            return render_template("upload.html")
+
+        # ── Price validated BEFORE any file upload ────────────────────────
+        try:
+            price_val = float(price)
+            if price_val < 0:
+                price_val = 0.0
+        except ValueError:
+            flash("Please enter a valid price.", "error")
+            return render_template("upload.html")
+
+        # ── Preview: base64 (auto-capture) OR file upload (manual) ──────────
+        # preview_base64 is set when seller uses PDF auto-capture.
+        # preview_image file is set when seller uploads manually.
+        # Base64 takes priority; both paths are required — at least one must exist.
+        preview_url  = None
+        preview_b64  = request.form.get("preview_base64", "").strip()
+        preview_obj  = request.files.get("preview_image")
+
+        if preview_b64:
+            # Decode base64 data URL → bytes → upload as PNG
+            import base64, io
+            try:
+                # Strip the "data:image/png;base64," prefix
+                if "," in preview_b64:
+                    preview_b64 = preview_b64.split(",", 1)[1]
+                img_bytes   = base64.b64decode(preview_b64)
+                img_file    = io.BytesIO(img_bytes)
+                img_file.name = "preview.png"  # storage.py uses this for content-type
+                preview_url = upload_preview_image(img_file, "preview.png")
+            except Exception as e:
+                flash(f"Auto-captured preview could not be saved: {e}", "error")
+                return render_template("upload.html")
+
+        elif preview_obj and preview_obj.filename:
+            # Manual file upload path
+            preview_ext = (
+                preview_obj.filename.rsplit(".", 1)[-1].lower()
+                if "." in preview_obj.filename else ""
+            )
+            from config import ALLOWED_IMAGE_EXTENSIONS
+            if preview_ext not in ALLOWED_IMAGE_EXTENSIONS:
+                flash("Preview image must be JPG, JPEG, PNG, or WEBP.", "error")
+                return render_template("upload.html")
+            try:
+                preview_url = upload_preview_image(preview_obj, preview_obj.filename)
+            except Exception as e:
+                flash(f"Preview image upload failed: {e}", "error")
+                return render_template("upload.html")
+
+        else:
+            flash(
+                "A preview image is required. "
+                "For PDFs: click '📸 Use this page as preview'. "
+                "For other files: upload an image in the preview step.",
+                "error",
+            )
+            return render_template("upload.html")
+
+        # ── Upload main file ──────────────────────────────────────────────────
+        try:
+            file_url, ext = upload_file(file_obj, file_obj.filename)
+        except ValueError as e:
+            flash(str(e), "error")
+            return render_template("upload.html")
+        except Exception as e:
+            flash(f"Upload failed: {e}", "error")
+            return render_template("upload.html")
+
+        # ── Save metadata to DB ───────────────────────────────────────────────
+        product_model.create_product(
+            title=title, description=description, price=price_val,
+            file_url=file_url, file_type=ext, preview_url=preview_url,
+            subject=subject, college=college, year_tag=year_tag,
+            seller_id=session["user_id"],
+        )
+        flash("Upload successful! Your material is now live on the marketplace.", "success")
+        return redirect(url_for("product.seller_dashboard"))
+
+    return render_template("upload.html", supabase=is_supabase_enabled())
+
+
+@product_bp.route("/product/<int:pid>")
+def detail(pid):
+    product   = product_model.get_product_by_id(pid)
+    if not product or product["status"] != "approved":
+        abort(404)
+    reviews   = review_model.get_product_reviews(pid)
+    purchased = reviewed = False
+    if "user_id" in session:
+        purchased = order_model.has_purchased(session["user_id"], pid)
+        reviewed  = review_model.has_reviewed(session["user_id"], pid)
+    return render_template("product.html",
+                           product=product, reviews=reviews,
+                           purchased=purchased, reviewed=reviewed)
+
+
+@product_bp.route("/product/<int:pid>/buy", methods=["POST"])
+@login_required
+def buy(pid):
+    product = product_model.get_product_by_id(pid)
+    if not product or product["status"] != "approved":
+        abort(404)
+    if product["seller_id"] == session["user_id"]:
+        flash("You cannot buy your own material.", "error")
+        return redirect(url_for("product.detail", pid=pid))
+    if order_model.has_purchased(session["user_id"], pid):
+        flash("You already own this material.", "info")
+        return redirect(url_for("product.detail", pid=pid))
+
+    # Free materials — complete instantly, no payment needed
+    if float(product["price"]) == 0:
+        oid = order_model.create_order(
+            user_id=session["user_id"], product_id=pid,
+            seller_price=0, platform_fee=0, buyer_amount=0,
+            payment_method="wallet", razorpay_order_id=None,
+        )
+        order_model.complete_order(oid)
+        logger.info("Free material unlocked: order=%s user=%s product=%s",
+                    oid, session["user_id"], pid)
+        flash("Free material unlocked! Download below.", "success")
+        return redirect(url_for("product.detail", pid=pid))
+
+    return redirect(url_for("payment.checkout", pid=pid))
+
+
+@product_bp.route("/download/<int:pid>")
+@login_required
+def download(pid):
+    product  = product_model.get_product_by_id(pid)
+    if not product:
+        abort(404)
+
+    is_owner = (product["seller_id"] == session["user_id"])
+    is_admin = (session.get("user_role") == "admin")
+
+    if not (is_owner or is_admin or order_model.has_purchased(session["user_id"], pid)):
+        flash("Please purchase this material first.", "error")
+        return redirect(url_for("product.detail", pid=pid))
+
+    product_model.increment_downloads(pid)
+
+    # Sanitise filename for download
+    safe_name = "".join(
+        c if c.isalnum() or c in " ._-" else "_"
+        for c in product["title"]
+    ).strip()
+    download_name = f"{safe_name}.{product['file_type']}"
+
+    # Delegate to storage service (handles both Supabase signed URL & local)
+    return get_download_response(product["file_url"], download_name)
+
+
+@product_bp.route("/review/<int:pid>", methods=["POST"])
+@login_required
+def add_review(pid):
+    if not order_model.has_purchased(session["user_id"], pid):
+        flash("Only buyers who purchased this material can review.", "error")
+        return redirect(url_for("product.detail", pid=pid))
+    rating  = max(1, min(5, int(request.form.get("rating", 5))))
+    comment = request.form.get("comment", "").strip()
+    review_model.add_review(session["user_id"], pid, rating, comment)
+    flash("Review submitted!", "success")
+    return redirect(url_for("product.detail", pid=pid))
+
+
+@product_bp.route("/dashboard")
+@login_required
+def seller_dashboard():
+    if session.get("user_role") not in ("seller", "admin"):
+        flash("Seller dashboard is only for sellers.", "error")
+        return redirect(url_for("product.index"))
+    products       = product_model.get_seller_products(session["user_id"])
+    total_sales    = sum(p["total_sales"] for p in products)
+    total_earnings = sum(float(p["total_earnings"] or 0) for p in products)
+    orders         = order_model.get_user_orders(session["user_id"])
+    return render_template("dashboard.html",
+                           products=products,
+                           total_sales=total_sales,
+                           total_earnings=total_earnings,
+                           orders=orders)
+
+
+@product_bp.route("/cart")
+@login_required
+def cart():
+    orders = order_model.get_user_orders(session["user_id"])
+    return render_template("cart.html", orders=orders)
+
+
+@product_bp.route("/product/<int:pid>/preview")
+def preview(pid):
+    """
+    Public preview endpoint — shows the seller-uploaded preview image.
+    No login required so potential buyers can see before purchasing.
+    Returns 404 if no preview image is set.
+    """
+    product = product_model.get_product_by_id(pid)
+    if not product or product["status"] != "approved":
+        abort(404)
+
+    preview_url = product.get("preview_url")
+    if not preview_url:
+        abort(404)
+
+    # If it's a full URL (Supabase), redirect to it
+    if preview_url.startswith("http"):
+        from flask import redirect as _redirect
+        return _redirect(preview_url)
+
+    # Local dev — serve directly from disk
+    from flask import send_file as _send_file
+    from config import UPLOAD_FOLDER as _UF
+    import os as _os
+    abs_path = _os.path.join(_UF, preview_url)
+    if not _os.path.exists(abs_path):
+        abort(404)
+    return _send_file(abs_path)

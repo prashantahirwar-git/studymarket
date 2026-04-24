@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error {{ code }} — StudyMarket</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('product.index') }}">📚 Study<span>Market</span></a>
+  </div>
+</nav>
+<main style="display:flex;align-items:center;justify-content:center;min-height:60vh">
+  <div style="text-align:center;padding:2rem">
+    <div style="font-size:5rem;margin-bottom:1rem">
+      {{ '🚫' if code == 403 else ('🔍' if code == 404 else '⚠️') }}
+    </div>
+    <h1 style="font-size:5rem;font-family:'Sora',sans-serif;color:var(--indigo-lite);margin-bottom:.5rem">{{ code }}</h1>
+    <h2 style="margin-bottom:1rem">{{ msg }}</h2>
+    <a href="{{ url_for('product.index') }}" class="btn btn-primary">Go to Marketplace</a>
+  </div>
+</main>
+<footer><div class="container"><p>StudyMarket © 2024</p></div></footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
